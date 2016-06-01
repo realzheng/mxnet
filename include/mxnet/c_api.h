@@ -92,6 +92,41 @@ struct NDArrayOpInfo {
   void* p_list_arguments;
   void* p_declare_backward_dependency;
 };
+
+struct CustomOpInfo {
+  bool (*forward)(int /*size*/, void** /*ptrs*/, int* /*tags*/,
+                  const int* /*reqs*/, const bool /*is_train*/, void* /*state*/);
+  bool (*backward)(int /*size*/, void** /*ptrs*/, int* /*tags*/,
+                   const int* /*reqs*/, const bool /*is_train*/, void* /*state*/);
+  // all functions also pass a payload void* pointer
+  void* p_forward;
+  void* p_backward;
+};
+
+struct CustomOpPropInfo {
+  bool (*list_arguments)(char*** /*args*/, void* /*state*/);
+  bool (*list_outputs)(char*** /*outputs*/, void* /*state*/);
+  bool (*infer_shape)(int /*num_input*/, int* /*ndims*/, unsigned** /*shapes*/,
+                      void* /*state*/);
+  bool (*declare_backward_dependency)(const int* /*out_grad*/, const int* /*in_data*/,
+                                      const int* /*out_data*/, int* /*num_deps*/,
+                                      int** /*rdeps*/, void* /*state*/);
+  bool (*create_operator)(const char* /*ctx*/, int /*num_inputs*/, unsigned** /*shapes*/,
+                          int* /*ndims*/, int* /*dtypes*/,
+                          CustomOpInfo* /*ret*/, void* /*state*/);
+  bool (*list_auxiliary_states)(char*** /*aux*/, void* /*state*/);
+  // all functions also pass a payload void* pointer
+  void* p_list_arguments;
+  void* p_list_outputs;
+  void* p_infer_shape;
+  void* p_declare_backward_dependency;
+  void* p_create_operator;
+  void* p_list_auxiliary_states;
+};
+
+typedef bool (*CustomOpPropCreator)(const char* /*op_type*/, const int /*num_kwargs*/,
+                                    const char** /*keys*/, const char** /*values*/,
+                                    CustomOpPropInfo* /*ret*/);
 }
 /*!
  * \brief return str message of the last error
@@ -577,7 +612,7 @@ MXNET_DLL int MXSymbolSetAttr(SymbolHandle symbol,
                               const char* key,
                               const char* value);
 /*!
- * \brief Get all attributes from symbol
+ * \brief Get all attributes from symbol, including all descendents.
  * \param symbol the source symbol
  * \param out_size The number of output attributes
  * \param out 2*out_size strings representing key value pairs.
@@ -586,6 +621,16 @@ MXNET_DLL int MXSymbolSetAttr(SymbolHandle symbol,
 MXNET_DLL int MXSymbolListAttr(SymbolHandle symbol,
                                mx_uint *out_size,
                                const char*** out);
+/*!
+ * \brief Get all attributes from symbol, excluding descendents.
+ * \param symbol the source symbol
+ * \param out_size The number of output attributes
+ * \param out 2*out_size strings representing key value pairs.
+ * \return 0 when success, -1 when failure happens
+ */
+MXNET_DLL int MXSymbolListAttrShallow(SymbolHandle symbol,
+                                      mx_uint *out_size,
+                                      const char*** out);
 /*!
  * \brief List arguments in the symbol.
  * \param symbol the symbol
@@ -916,7 +961,7 @@ MXNET_DLL int MXExecutorBindEX(SymbolHandle symbol_handle,
                                mx_uint *grad_req_type,
                                mx_uint aux_states_len,
                                NDArrayHandle *aux_states,
-                               ExecutorHandle *shared_exec,
+                               ExecutorHandle shared_exec,
                                ExecutorHandle *out);
 /*!
  * \brief set a call back to notify the completion of operation
@@ -1304,5 +1349,7 @@ MXNET_DLL int MXOptimizerUpdate(OptimizerHandle handle,
                                 NDArrayHandle grad,
                                 mx_float lr,
                                 mx_float wd);
+
+MXNET_DLL int MXCustomOpRegister(const char* op_type, CustomOpPropCreator creator);
 
 #endif  // MXNET_C_API_H_

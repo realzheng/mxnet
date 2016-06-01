@@ -26,6 +26,7 @@
 #include <utility>
 #include "./c_api_error.h"
 #include "../common/thread_local.h"
+#include "../operator/custom-inl.h"
 
 using namespace mxnet;
 
@@ -644,24 +645,43 @@ int MXSymbolSetAttr(SymbolHandle symbol,
   API_END();
 }
 
-int MXSymbolListAttr(SymbolHandle symbol,
-                     mx_uint *out_size,
-                     const char*** out) {
+int _MXSymbolListAttrImpl(SymbolHandle symbol,
+                          bool shalow,
+                          mx_uint *out_size,
+                          const char*** out) {
   Symbol *s = static_cast<Symbol*>(symbol);
   MXAPIThreadLocalEntry *ret = MXAPIThreadLocalStore::Get();
   API_BEGIN();
-  std::map<std::string, std::string> attr = std::move(s->ListAttr());
-  ret->ret_vec_charp.clear();
+  std::map<std::string, std::string> attr =
+      std::move(shalow ? s->ListAttrShallow() : s->ListAttr());
+  std::vector<std::string> attrList;
   *out_size = 0;
   for (auto it : attr) {
-    ret->ret_vec_charp.push_back(it.first.c_str());
-    ret->ret_vec_charp.push_back(it.second.c_str());
+    attrList.push_back(it.first);
+    attrList.push_back(it.second);
     (*out_size)++;
+  }
+
+  ret->ret_vec_str = std::move(attrList);
+  ret->ret_vec_charp.clear();
+  for (size_t i = 0; i < ret->ret_vec_str.size(); ++i) {
+    ret->ret_vec_charp.push_back(ret->ret_vec_str[i].c_str());
   }
   *out = dmlc::BeginPtr(ret->ret_vec_charp);
   API_END();
 }
 
+int MXSymbolListAttr(SymbolHandle symbol,
+                     mx_uint *out_size,
+                     const char*** out) {
+  return _MXSymbolListAttrImpl(symbol, false, out_size, out);
+}
+
+int MXSymbolListAttrShallow(SymbolHandle symbol,
+                            mx_uint *out_size,
+                            const char*** out) {
+  return _MXSymbolListAttrImpl(symbol, true, out_size, out);
+}
 
 int MXSymbolListArguments(SymbolHandle symbol,
                           mx_uint *out_size,
@@ -1014,7 +1034,7 @@ int MXExecutorBindEX(SymbolHandle symbol_handle,
                      mx_uint *grad_req_type,
                      mx_uint aux_states_len,
                      NDArrayHandle *aux_states,
-                     ExecutorHandle *shared_exec,
+                     ExecutorHandle shared_exec,
                      ExecutorHandle *out) {
   API_BEGIN();
   Symbol *symb = static_cast<Symbol*>(symbol_handle);
@@ -1503,5 +1523,11 @@ int MXOptimizerUpdate(OptimizerHandle handle,
               static_cast<NDArray*>(weight),
               static_cast<NDArray*>(grad),
               lr, wd);
+  API_END();
+}
+
+int MXCustomOpRegister(const char* op_type, CustomOpPropCreator creator) {
+  API_BEGIN();
+  mxnet::op::CustomOpProp::Register(op_type, creator);
   API_END();
 }

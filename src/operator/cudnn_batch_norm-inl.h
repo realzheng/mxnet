@@ -115,7 +115,7 @@ class CuDNNBatchNormOp : public Operator {
                                                       mean_desc_,
                                                       gamma.dptr_,
                                                       beta.dptr_,
-                                                      param_.momentum,
+                                                      1 - param_.momentum,
                                                       moving_mean.dptr_,
                                                       moving_inv_var.dptr_,
                                                       param_.eps,
@@ -152,6 +152,8 @@ class CuDNNBatchNormOp : public Operator {
     CHECK_EQ(in_data.size(), 3);
     CHECK_EQ(out_data.size(), 3);
     CHECK_EQ(in_grad.size(), 3);
+    CHECK(ctx.is_train && !param_.use_global_stats)
+        << "use global statistics is not yet supported in CuDNNBatchNorm";
 
     Stream<gpu> *s = ctx.get_stream<gpu>();
     Tensor<gpu, 4> x = in_data[cudnnbatchnorm::kData].get_with_shape<gpu, 4, real_t>(shape_, s);
